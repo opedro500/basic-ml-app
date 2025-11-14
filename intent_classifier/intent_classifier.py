@@ -165,101 +165,54 @@ def remove_duplicate_words(text: str) -> str:
     return ' '.join(result)
 
 
-def fetch_model_from_wandb(model_full_name: str) -> str:
+def fetch_artifact_from_wandb(model_full_name: str) -> Tuple[str, str]:
     """
-    Download a model artifact from W&B and return the path to the downloaded model file.
+    Download a model artifact from W&B and return the paths to the model and config files.
 
     :param model_full_name: The W&B artifact full name (e.g., "adaj/intent-classifier-2025-2/confusion-clf:v1").
                            Must have format: "entity/project/artifact_name:version"
     :type model_full_name: str
-    :return: The local file path to the downloaded Keras model file (.keras or .h5).
-    :rtype: str
-    :raises ValueError: If model_full_name format is invalid or model file not found in artifact.
+    :return: A tuple containing the local file path to the Keras model file and the config file.
+    :rtype: tuple[str, str]
+    :raises ValueError: If format is invalid or files are not found in the artifact.
     """
-    # Validate format: should be "entity/project/artifact_name:version"
+    # Validate format
     parts = model_full_name.split("/")
-    if len(parts) != 3:
+    if len(parts) != 3 or ":" not in parts[2]:
         raise ValueError(
             f"Invalid model_full_name format: '{model_full_name}'. "
             f"Expected format: 'entity/project/artifact_name:version' (e.g., 'adaj/intent-classifier-2025-2/confusion-clf:v1')"
         )
     
-    if ":" not in parts[2]:
-        raise ValueError(
-            f"Invalid model_full_name format: '{model_full_name}'. "
-            f"The artifact name must include a version (e.g., 'confusion-clf:v1')"
-        )
-    
     # Download artifact from W&B
-    api = wandb.Api()
-    artifact = api.artifact(model_full_name)
-    
-    # Create models directory if it doesn't exist
-    models_dir = Path(os.path.join(os.path.dirname(__file__), "models"))
+    try:
+        api = wandb.Api()
+        artifact = api.artifact(model_full_name, type='model')
+    except wandb.errors.CommError as e:
+        raise ValueError(f"Could not fetch artifact '{model_full_name}' from W&B. Ensure the path is correct and you are logged in. Original error: {e}")
+
+    # Create a target directory for the download
+    models_dir = Path(os.path.dirname(__file__)) / "models"
     models_dir.mkdir(exist_ok=True)
     
-    # Download artifact to models directory
+    # Download artifact content. The path returned is the directory where files are.
     download_path = artifact.download(root=models_dir)
     
-    # Find the model file (.keras or .h5) in the downloaded directory
-    for fname in os.listdir(download_path):
-        if fname.endswith(".keras") or fname.endswith(".h5"):
-            return os.path.join(download_path, fname)
-    
-    # If no model file found, raise error
-    raise ValueError(
-        f"Model file (.keras or .h5) not found in W&B artifact '{model_full_name}'. "
-        f"Downloaded to: {download_path}"
-    )
-
-
-def fetch_config_from_wandb(model_full_name: str) -> str:
-    """
-    Download a config file from a W&B artifact and return the path to the downloaded config file.
-
-    :param model_full_name: The W&B artifact full name (e.g., "adaj/intent-classifier-2025-2/confusion-clf:v1").
-                           Must have format: "entity/project/artifact_name:version"
-    :type model_full_name: str
-    :return: The local file path to the downloaded config YAML file (_config.yml).
-    :rtype: str
-    :raises ValueError: If model_full_name format is invalid or config file not found in artifact.
-    """
-    # Validate format: should be "entity/project/artifact_name:version"
-    parts = model_full_name.split("/")
-    if len(parts) != 3:
-        raise ValueError(
-            f"Invalid model_full_name format: '{model_full_name}'. "
-            f"Expected format: 'entity/project/artifact_name:version' (e.g., 'adaj/intent-classifier-2025-2/confusion-clf:v1')"
-        )
-    
-    if ":" not in parts[2]:
-        raise ValueError(
-            f"Invalid model_full_name format: '{model_full_name}'. "
-            f"The artifact name must include a version (e.g., 'confusion-clf:v1')"
-        )
-    
-    # Download artifact from W&B
-    api = wandb.Api()
-    artifact = api.artifact(model_full_name)
-    
-    # Create models directory if it doesn't exist
-    models_dir = Path(os.path.join(os.path.dirname(__file__), "models"))
-    models_dir.mkdir(exist_ok=True)
-    
-    # Download artifact to models directory
-    download_path = artifact.download(root=models_dir)
-    
-    # Find the config file (_config.yml) in the downloaded directory
-    for fname in os.listdir(download_path):
-        if fname.endswith("_config.yml"):
-            return os.path.join(download_path, fname)
-    
-    # If config not found, raise error
-    raise ValueError(
-        f"Config file (_config.yml) not found in W&B artifact '{model_full_name}'. "
-        f"Downloaded to: {download_path}. "
-        f"Please ensure the artifact contains a '_config.yml' file."
-    )
+    model_file, config_file = None, None
+    # Iterate over the files *in the artifact manifest* to find the correct ones.
+    # This prevents accidentally loading unrelated files from the same directory.
+    for f in artifact.files():
+        if f.name.endswith((".keras", ".h5")):
+            model_file = os.path.join(download_path, f.name)
+        elif f.name.endswith("_config.yml"):
+            config_file = os.path.join(download_path, f.name)
+            
+    if not model_file:
+        raise ValueError(f"Model file (.keras or .h5) not found in W&B artifact '{model_full_name}'.")
+    if not config_file:
+        raise ValueError(f"Config file (_config.yml) not found in W&B artifact '{model_full_name}'.")
+        
+    return model_file, config_file
 
 
 class IntentClassifier:
@@ -290,59 +243,58 @@ class IntentClassifier:
         """
         Initializes the IntentClassifier.
         """
-        if load_model is None:
-            self.model = None
-        else:
-            if os.path.exists(load_model):
-                self.model = tf.keras.models.load_model(load_model)
-                print(f"Loaded keras model from {load_model}.")
-            else:
-                # Try to load from W&B
-                local_model_path = fetch_model_from_wandb(load_model) # local_model_path é a string do caminho
-                self.model = tf.keras.models.load_model(local_model_path)
-                print(f"Loaded keras model from {load_model}.")
-            if self.model is None:
-                raise ValueError(f"Model file not found: {load_model}. Try to load from W&B or provide a valid path to a Keras model file.") 
-        # Set up W&B project early (needed for config loading from W&B)
+        self.model = None
+        local_model_path = None
+        
+        # Set up W&B project early
         self.wandb_project = wandb_project or os.environ.get("WANDB_PROJECT") or "intent-classifier"
-        # Load config (may need wandb_project for loading from W&B)
-        self._load_config(config, load_model)
+
+        if load_model:
+            # Check if load_model is a local file path or a W&B artifact URL
+            if os.path.exists(load_model):
+                local_model_path = load_model
+            else:
+                # If not a local path, assume it's a W&B artifact and fetch it.
+                # The associated config path will be discovered and used automatically.
+                local_model_path, config = fetch_artifact_from_wandb(load_model)
+            
+            self.model = tf.keras.models.load_model(local_model_path)
+            print(f"Loaded Keras model from {local_model_path}.")
+
+        # Load config. If fetched from W&B, `config` is already the correct path.
+        self._load_config(config)
+        
         # Load intents from the examples file if provided
         self._load_intents(training_data)
+        
         # Validate model output size matches config codes (if model is loaded)
-        if self.model is not None:
+        if self.model:
             self._validate_model_config_compatibility()
-        # Initialize stop_words
+            
+        # Initialize stop_words and one-hot encoder
         self._load_stop_words(self.config.stop_words_file)
-        # Set up one-hot encoder
         self._setup_onehot_encoder()
-        # Set up W&B (if not already set up)
+        
+        # Set up W&B run
         if self.wandb_project:
             print(f"Setting up W&B project: {self.wandb_project}")
             wandb.login(key=os.environ.get("WANDB_API_KEY"))
-            # Create wandb run instance
-            self.wandb_run = wandb.init(project=self.wandb_project, 
-                                        config=self.config.__dict__)
-            # Create and log artifact
-            if self.training_data is not None:
-                artifact = wandb.Artifact(training_data.split("/")[-1], type="dataset")
-                artifact.add_file(training_data) # Assuming 'training_data' is the dataset file
+            self.wandb_run = wandb.init(project=self.wandb_project, config=self.config.__dict__)
+            if self.training_data:
+                artifact = wandb.Artifact(Path(self.training_data).name, type="dataset")
+                artifact.add_file(self.training_data)
                 self.wandb_run.log_artifact(artifact)
         else:
             self.wandb_run = None
             print("W&B project not set. No W&B run will be created.")
 
-    def _load_config(self, config: Optional[Union[str, Config]], load_model: Optional[str]) -> Config:
+    def _load_config(self, config: Optional[Union[str, Config]]) -> None:
         """
-        Loads the configuration from a file, object, existing model path, or W&B artifact.
+        Loads the configuration from a file path or a Config object.
 
-        :param config: A path to a YAML config file, a Config object, or None.
+        :param config: A path to a YAML config file or a Config object.
         :type config: str, Config, optional
-        :param load_model: Path to a saved Keras model or W&B artifact URL. Used to find the config if `config` is None.
-        :type load_model: str, optional
-        :return: The loaded Config object.
-        :rtype: Config
-        :raises ValueError: If config cannot be loaded.
+        :raises ValueError: If config is not provided or is of an invalid type.
         """
         if isinstance(config, str):
             with open(config, 'r') as f:
@@ -351,43 +303,13 @@ class IntentClassifier:
         elif isinstance(config, Config):
             self.config = config
         elif config is None:
-            # Load from a model
-            if load_model is not None:
-                # First, try to find config file locally (same directory as model)
-                config_path = load_model.replace(".keras", "_config.yml").replace(".h5", "_config.yml")
-                
-                # If model is a local file, try to find config in same directory
-                if os.path.exists(load_model):
-                    if os.path.exists(config_path):
-                        with open(config_path, 'r') as f:
-                            self.config = Config(**yaml.safe_load(f))
-                        print(f"Loaded config from {config_path}.")
-                        return self.config
-                
-                # If config not found locally and wandb_project is provided, try W&B
-                if self.wandb_project:
-                    try:
-                        config_path = fetch_config_from_wandb(load_model)
-                        with open(config_path, 'r') as f:
-                            self.config = Config(**yaml.safe_load(f))
-                        print(f"Loaded config from W&B artifact: {config_path}.")
-                        return self.config
-                    except Exception as e:
-                        # If W&B fetch fails, fall through to error
-                        print(f"Warning: Failed to load config from W&B: {e}")
-                # If neither local nor W&B worked, raise error
-                error_msg = (
-                    f"The `config` object must be provided for this IntentClassifier. If you are loading from W&B, know that "
-                )
-                if self.wandb_project:
-                    error_msg += " W&B config loading failed."
-                else:
-                    error_msg += "wandb_project was not provided to load from W&B."
-                error_msg += " Please provide a config file path or ensure the model artifact contains a config file."
-                raise ValueError(error_msg)
-            else:
-                raise ValueError('The `config` object must be provided for this IntentClassifier.')
-        return self.config
+            # If no config is provided at all, we can't proceed.
+            raise ValueError(
+                "A 'config' must be provided, either as a file path, a Config object, "
+                "or as part of a W&B artifact."
+            )
+        else:
+            raise TypeError(f"Unsupported config type: {type(config)}")
     
     def _load_intents(self, training_data: Optional[str]) -> np.ndarray:
         """

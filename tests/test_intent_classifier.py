@@ -54,7 +54,7 @@ def clf_wandb(paths):
 
     # A inicialização tentará carregar o modelo
     classifier = IntentClassifier(config=paths["config"], 
-                                examples_file=paths["examples"],
+                                training_data=paths["examples"],
                                 load_model=model_url)
     
     # Validação crucial: o __init__ do código-fonte captura exceções e apenas imprime.
@@ -86,7 +86,7 @@ def clf_local_trained(paths):
     )
     
     # Passa o objeto Config e o caminho dos exemplos
-    classifier = IntentClassifier(config=local_config, examples_file=paths["examples"])
+    classifier = IntentClassifier(config=local_config, training_data=paths["examples"])
     classifier.train(tf_verbosity=0)  # Treina silenciosamente
     print("✅ Modelo local treinado.")
     return classifier
