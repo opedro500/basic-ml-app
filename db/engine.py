@@ -34,11 +34,13 @@ def log_prediction(prediction_data) -> dict:
 
     # Log the prediction to the database
     try:
-        # O Pymongo não modifica o dicionário original, mas retorna um objeto de resultado
+        # O Pymongo modifica o dicionário `prediction_dict`, adicionando um campo `_id`.
         result = collection.insert_one(prediction_dict)
         
         # Adicionamos o ID gerado como uma string para a resposta JSON
+        # e removemos o campo `_id` (do tipo ObjectId) que não é serializável.
         prediction_dict["id"] = str(result.inserted_id)
+        del prediction_dict["_id"]
 
     except Exception as e:
         # If insert_one fails, log the error and continue
