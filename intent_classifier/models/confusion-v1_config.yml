@@ -1,0 +1,18 @@
+architecture: v0.1.5
+callback_patience: 100
+codes:
+- certainty
+- confusion
+- neutral_statement
+dataset_name: confusion
+embedding_model: https://www.kaggle.com/models/google/universal-sentence-encoder/tensorFlow2/multilingual/2
+epochs: 1000
+l1_reg: 0.01
+l2_reg: 0.01
+learning_rate: 0.0001
+min_words: 1
+sent_dropout: 0.5
+sent_hl_units: 64
+stop_words_file: null
+task: train
+validation_split: 0.1
