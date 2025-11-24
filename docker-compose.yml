@@ -1,11 +1,42 @@
 name: basic-ml-app
+
 services:
   backend:
     build:
       context: .
       dockerfile: app/app.Dockerfile
-    container_name: basic-ml-app
+    container_name: basic-ml-app-backend
     ports:
       - "8000:8000"
     env_file: .env
     restart: unless-stopped
+    networks:
+      - ml_net
+    # Healthcheck: O Docker verifica se a API está respondendo antes de liberar o frontend
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: app/app.Dockerfile
+    container_name: basic-ml-app-frontend
+    command: streamlit run app/client_app.py
+    ports:
+      - "8501:8501"
+    environment:
+      - API_URL=http://backend:8000
+    # Só inicia o container do frontend quando o backend estiver "saudável"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - ml_net
+
+networks:
+  ml_net:
+    driver: bridge

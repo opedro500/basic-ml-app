@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import plotly.express as px
+import os
 from datetime import datetime
 
 # --- CONFIGURAÇÃO ---
@@ -11,7 +12,8 @@ st.set_page_config(
     layout="wide" # Usa a tela inteira para melhor visualização
 )
 
-API_URL = "http://localhost:8000/predict"
+BASE_URL = os.getenv("API_URL", "http://localhost:8000") 
+API_URL = f"{BASE_URL}/predict"
 
 # --- FUNÇÕES AUXILIARES ---
 def format_label(label):

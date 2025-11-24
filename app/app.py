@@ -1,6 +1,7 @@
 import os
 import re
 import traceback
+import logging
 from datetime import datetime
 from datetime import timezone
 from dotenv import load_dotenv
@@ -38,6 +39,15 @@ def get_model_urls() -> str:
     assert models_env is not None, "Variável de ambiente WANDB_MODELS não definida."
     return models_env
 
+class EndpointFilter(logging.Filter):
+    def __init__(self, path: str):
+        super().__init__()
+        self.path = path
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # Retorna False se a mensagem contiver a rota, impedindo o log
+        return record.getMessage().find(self.path) == -1
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -68,6 +78,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+uvicorn_logger = logging.getLogger("uvicorn.access")
+uvicorn_logger.addFilter(EndpointFilter(path="/health"))
+
 # Controle de CORS (Cross-Origin Resource Sharing) para prevenir ataques de fontes não autorizadas.
 app.add_middleware(
     CORSMiddleware,
@@ -90,6 +103,10 @@ Routes
 @app.get("/")
 async def root():
     return {"message": f"Basic ML App is running in {ENV} mode"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
 @app.post("/predict")
 async def predict(text: str, owner: str = Depends(conditional_auth)):
