@@ -278,7 +278,11 @@ class IntentClassifier:
         # Set up W&B run
         if self.wandb_project:
             print(f"Setting up W&B project: {self.wandb_project}")
-            wandb.login(key=os.environ.get("WANDB_API_KEY"))
+            wandb_key = os.environ.get("WANDB_API_KEY")
+            if wandb_key:
+                wandb.login(key=wandb_key)
+            else:
+                os.environ["WANDB_MODE"] = "disabled"
             self.wandb_run = wandb.init(project=self.wandb_project, config=self.config.__dict__)
             if self.training_data:
                 artifact = wandb.Artifact(Path(self.training_data).name, type="dataset")
