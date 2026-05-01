@@ -1,135 +1,67 @@
 import os
-import re
 import traceback
 import logging
-from datetime import datetime
-from datetime import timezone
-from dotenv import load_dotenv
-import logging
-from fastapi import FastAPI, HTTPException, Request, Depends
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-
-from intent_classifier import IntentClassifier
-from db.auth import conditional_auth
-from app import services
-
 
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from app.routes import predict
+from app import services
 
-
-logger = logging.getLogger(__name__)
-
-# Load environment variables from .env file
 load_dotenv()
-
-# Read environment mode (defaults to prod for safety)
+logger = logging.getLogger(__name__)
 ENV = os.getenv("ENV", "prod").lower()
-logger.info(f"Running in {ENV} mode")
-
-# Dicionário global para armazenar os modelos carregados.
-MODELS = {}
-
-def get_model_urls() -> str:
-    """
-    Busca a string de URLs de modelos da variável de ambiente WANDB_MODELS.
-    Isolar essa lógica em uma função facilita o patching durante os testes.
-    """
-    models_env = os.getenv("WANDB_MODELS")
-    assert models_env is not None, "Variável de ambiente WANDB_MODELS não definida."
-    return models_env
 
 class EndpointFilter(logging.Filter):
     def __init__(self, path: str):
         super().__init__()
         self.path = path
-
     def filter(self, record: logging.LogRecord) -> bool:
-        # Retorna False se a mensagem contiver a rota, impedindo o log
         return record.getMessage().find(self.path) == -1
+
+logging.getLogger("uvicorn.access").addFilter(EndpointFilter(path="/health"))
+
+def get_model_urls() -> str:
+    models_env = os.getenv("WANDB_MODELS")
+    assert models_env is not None, "Variável WANDB_MODELS não definida."
+    return models_env
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Inicialização do app. Atualmente, apenas carrega modelos do W&B.
-    """
-    global MODELS
-    logger.info("Carregando modelos do W&B durante a inicialização do app...")
+    logger.info("Carregando modelos do W&B...")
     try:
         model_urls_str = get_model_urls()
-        MODELS = services.load_all_classifiers(model_urls_str)
-        logger.info("Modelos do W&B carregados com sucesso.")
+        app.state.models = services.load_all_classifiers(model_urls_str)
+        logger.info("Modelos carregados com sucesso.")
     except Exception as e:
-        logger.error(f"Falha crítica ao carregar modelos do W&B: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise Exception(f"Falha crítica ao carregar modelos do W&B: {str(e)}")
-    # This is the point where the app is ready to handle requests
+        logger.error(f"Falha ao carregar modelos: {str(e)}")
+        raise e
+    
     yield
-    # Código para ser executado no shutdown (opcional)
-    logger.info("Descarregando modelos e limpando recursos...")
-    MODELS.clear()
+    
+    logger.info("Limpando memória...")
+    app.state.models.clear()
 
+app = FastAPI(title="Basic ML App", lifespan=lifespan)
 
-# Initialize FastAPI app with the lifespan manager
-app = FastAPI(
-    title="Basic ML App",
-    description="A basic ML app",
-    version="1.0.0",
-    lifespan=lifespan,
-)
-
-uvicorn_logger = logging.getLogger("uvicorn.access")
-uvicorn_logger.addFilter(EndpointFilter(path="/health"))
-
-# Controle de CORS (Cross-Origin Resource Sharing) para prevenir ataques de fontes não autorizadas.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost",
-        # "http://localhost:3000",  # React ou outra frontend local
-        # "https://meusite.com",    # domínio em produção
-    ],
+    allow_origins=["*"] if ENV == "dev" else ["http://localhost"],
     allow_credentials=True,
-    allow_methods=["*"],              # permite todos os métodos: GET, POST, etc
-    allow_headers=["*"],              # permite todos os headers (Authorization, Content-Type...)
-    # Durante o desenvolvimento: você pode usar allow_origins=["*"] para liberar tudo.
-    # Em produção: evite "*" e especifique os domínios confiáveis.
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+app.include_router(predict.router)
 
-"""
-Routes
-"""
-@app.get("/")
+@app.get("/", tags=["Sistema"])
 async def root():
-    return {"message": f"Basic ML App is running in {ENV} mode"}
+    return {"message": f"Basic ML App rodando em modo {ENV}"}
 
-@app.get("/health")
+@app.get("/health", tags=["Sistema"])
 async def health_check():
     return {"status": "ok"}
-
-@app.post("/predict")
-async def predict(text: str, owner: str = Depends(conditional_auth)):
-    """
-    Endpoint de predição.
-    Este é um 'Controller' enxuto. 
-    Ele apenas delega a lógica de negócio para o services.py.
-    """
-    try:
-        # 1. O Controller delega TODA a lógica de negócio para o services.py
-        results = services.predict_and_log_intent(
-            text=text, 
-            owner=owner, 
-            models=MODELS
-        )
-        # 2. O Controller retorna a resposta (Lógica de View) no formato JSON
-        return JSONResponse(content=results)
-    except Exception as e:
-        logger.error(f"Erro ao processar a predição: {str(e)}")
-        logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Erro interno ao processar a predição: {str(e)}")
-
-
 
 if __name__ == "__main__":
     import uvicorn

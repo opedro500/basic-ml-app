@@ -1,28 +1,35 @@
-"""
-Este arquivo contém os modelos Pydantic que definem a estrutura (o "schema")
-dos dados que entram e, principalmente, saem da nossa API.
-
-No padrão MVC de uma API REST, este arquivo é a implementação da camada "View".
-
-Eles são usados diretamente pelo FastAPI para:
-1.  Validar Respostas: Garantir que o JSON retornado pelos endpoints
-    (ex: /predict) siga exatamente o contrato definido aqui (ex: PredictionResponse).
-2.  Documentação Automática: Gerar a documentação interativa
-    (em /docs e /redoc) com exemplos claros dos schemas de resposta.
-3.  Serialização: Converter tipos de dados complexos (como objetos Python)
-    em JSON formatado para o cliente.
-"""
-
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, Optional
 
+class PredictRequest(BaseModel):
+    """Contrato do que a API espera receber do usuário."""
+    text: str = Field(
+        ..., 
+        description="O texto ou frase que o usuário deseja classificar.", 
+        json_schema_extra={"examples": ["I am so confused right now."]}
+    )
+
 class SinglePrediction(BaseModel):
-    top_intent: str
-    all_probs: Dict[str, float]
+    """Representa a predição de um único modelo."""
+    top_intent: str = Field(
+        ..., 
+        description="A intenção que recebeu a maior probabilidade (classe vencedora)."
+    )
+    all_probs: Dict[str, float] = Field(
+        ..., 
+        description="Dicionário com as probabilidades individuais de todas as classes."
+    )
 
 class PredictionResponse(BaseModel):
-    id: Optional[str] = None 
-    text: str
-    owner: str
-    predictions: Dict[str, SinglePrediction]
-    timestamp: int
+    """Contrato do que a API devolve para o usuário no final do processo."""
+    id: Optional[str] = Field(
+        None, 
+        description="ID único gerado automaticamente ao salvar no banco de dados."
+    )
+    text: str = Field(..., description="O texto original enviado pelo usuário.")
+    owner: str = Field(..., description="Identificação do dono do token que fez a requisição.")
+    predictions: Dict[str, SinglePrediction] = Field(
+        ..., 
+        description="Resultados das predições, agrupados pelo nome do modelo que as gerou."
+    )
+    timestamp: int = Field(..., description="Data e hora exata da predição em formato Unix timestamp.")

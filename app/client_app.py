@@ -3,42 +3,40 @@ import requests
 import pandas as pd
 import plotly.express as px
 import os
+
 from datetime import datetime
 
 # --- CONFIGURAÇÃO ---
 st.set_page_config(
     page_title="Análise de Intenção", 
     page_icon="🧠",
-    layout="wide" # Usa a tela inteira para melhor visualização
+    layout="wide" 
 )
 
 BASE_URL = os.getenv("API_URL", "http://localhost:8000") 
 API_URL = f"{BASE_URL}/predict"
 
 # --- FUNÇÕES AUXILIARES ---
-def format_label(label):
+def format_label(label: str) -> str:
     """Remove underscores e capitaliza para exibição bonita."""
     return label.replace("_", " ").capitalize()
 
-def plot_probabilities(probs_dict):
-    """Gera um gráfico de barras bonito com Plotly."""
-    # Converte dicionário para DataFrame
+def plot_probabilities(probs_dict: dict):
+    """Gera um gráfico de barras moderno com Plotly."""
     df = pd.DataFrame(list(probs_dict.items()), columns=['Intenção', 'Confiança'])
     
-    # Tratamento de dados
     df['Confiança'] = df['Confiança'].astype(float)
     df['Intenção Formatada'] = df['Intenção'].apply(format_label)
-    df = df.sort_values(by='Confiança', ascending=True) # Ordenar para o gráfico
+    df = df.sort_values(by='Confiança', ascending=True) 
 
-    # Criação do Gráfico
     fig = px.bar(
         df, 
         x='Confiança', 
         y='Intenção Formatada', 
         orientation='h',
-        text_auto='.1%', # Mostra porcentagem na barra
+        text_auto='.1%', 
         color='Confiança',
-        color_continuous_scale='Blugrn', # Escala de cor azul-verde moderna
+        color_continuous_scale='Blugrn', 
     )
     
     fig.update_layout(
@@ -50,23 +48,21 @@ def plot_probabilities(probs_dict):
         margin=dict(l=0, r=0, t=0, b=0),
         height=300
     )
-    fig.update_xaxes(showticklabels=False, range=[0, 1.1]) # Esconde eixo X e garante margem
+    fig.update_xaxes(showticklabels=False, range=[0, 1.1])
     
     return fig
 
 # --- INTERFACE PRINCIPAL ---
 def main():
-    # Cabeçalho Estilizado
     col1, col2 = st.columns([1, 6])
     with col1:
-        st.image("https://cdn-icons-png.flaticon.com/512/2103/2103633.png", width=80) # Ícone genérico de AI
+        st.image("https://cdn-icons-png.flaticon.com/512/2103/2103633.png", width=80) 
     with col2:
         st.title("Classificador de Intenções Inteligente")
         st.markdown("Analise o sentimento e a intenção do cliente em tempo real.")
 
     st.divider()
 
-    # Área de Input Centralizada
     text_input = st.text_area(
         "Digite a mensagem do cliente:", 
         height=100, 
@@ -78,7 +74,6 @@ def main():
     with col_btn:
         analyze_btn = st.button("🔍 Analisar Texto", type="primary", use_container_width=True)
 
-    # Lógica de Processamento
     if analyze_btn:
         if not text_input.strip():
             st.warning("⚠️ Por favor, digite algum texto para analisar.")
@@ -87,8 +82,9 @@ def main():
         with st.status("🤖 Processando...", expanded=True) as status:
             try:
                 st.write("Conectando à API...")
+                
                 payload = {"text": text_input}
-                response = requests.post(API_URL, params=payload)
+                response = requests.post(API_URL, json=payload)
                 response.raise_for_status()
                 
                 data = response.json()
@@ -96,8 +92,6 @@ def main():
                 status.update(label="Análise concluída!", state="complete", expanded=False)
 
                 # --- RENDERIZAÇÃO DOS RESULTADOS ---
-                
-                # 1. Metadados na Sidebar (Baseado no JSON da sua imagem)
                 with st.sidebar:
                     st.header("ℹ️ Metadados da Requisição")
                     st.info(f"**ID:** `{data.get('id', 'N/A')}`")
@@ -105,7 +99,6 @@ def main():
                     
                     ts = data.get('timestamp')
                     if ts:
-                        # Tenta converter timestamp se for numérico, senão mostra como está
                         try:
                             dt_object = datetime.fromtimestamp(ts)
                             st.text(f"Data: {dt_object.strftime('%d/%m/%Y %H:%M')}")
@@ -115,7 +108,6 @@ def main():
                     with st.expander("Ver JSON Bruto"):
                         st.json(data)
 
-                # 2. Processamento das Predições
                 predictions = data.get("predictions", {})
 
                 if not predictions:
@@ -124,7 +116,6 @@ def main():
 
                 st.subheader("📊 Resultados da Análise")
 
-                # Se houver mais de um modelo (ex: confusion-clf E clair-clf), cria abas
                 model_names = list(predictions.keys())
                 tabs = st.tabs([name.replace("-", " ").upper() for name in model_names])
 
@@ -132,14 +123,10 @@ def main():
                     with tabs[i]:
                         model_data = predictions[model_key]
                         
-                        # Extrai dados principais
                         top_intent = model_data.get("top_intent", "Desconhecido")
                         probs = model_data.get("all_probs", {})
-                        
-                        # Pega a pontuação da top intent
                         top_score = probs.get(top_intent, 0.0)
 
-                        # Exibe Cartão de Destaque
                         c1, c2 = st.columns([1, 2])
                         with c1:
                             st.markdown("#### Intenção Detectada")
@@ -161,9 +148,13 @@ def main():
                             else:
                                 st.warning("Sem dados de probabilidade detalhados.")
 
+            except requests.exceptions.HTTPError as e:
+                status.update(label="Erro na API", state="error")
+                error_msg = response.json().get('detail', str(e)) if response.status_code == 422 else str(e)
+                st.error(f"❌ A API recusou a requisição: {error_msg}")
             except requests.exceptions.ConnectionError:
                 status.update(label="Erro de Conexão", state="error")
-                st.error(f"❌ Não foi possível conectar em `{API_URL}`. Verifique se o backend está rodando.")
+                st.error(f"❌ Não foi possível conectar em `{API_URL}`. Verifique se o backend (porta 8000) está rodando.")
             except Exception as e:
                 status.update(label="Erro Interno", state="error")
                 st.error(f"❌ Ocorreu um erro: {str(e)}")
