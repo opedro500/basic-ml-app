@@ -12,7 +12,6 @@ services:
     restart: unless-stopped
     networks:
       - ml_net
-    # Healthcheck: O Docker verifica se a API está respondendo antes de liberar o frontend
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s
@@ -30,7 +29,6 @@ services:
       - "8501:8501"
     environment:
       - API_URL=http://backend:8000
-    # Só inicia o container do frontend quando o backend estiver "saudável"
     depends_on:
       backend:
         condition: service_healthy
