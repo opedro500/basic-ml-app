@@ -1,50 +1,55 @@
 import os
+import logging
+
 from pymongo import MongoClient
 from dotenv import load_dotenv
-from datetime import datetime, timezone
+from app.schema import PredictionResponse
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
-MONGO_URI = os.getenv("MONGO_URI", None)
-MONGO_DB = os.getenv("MONGO_DB", None)
+MONGO_URI = os.getenv("MONGO_URI")
+MONGO_DB = os.getenv("MONGO_DB", "basic_ml_app") 
 ENV = os.getenv("ENV", "prod").lower()
 
-# --- Funções de Coleções ---
+# ==========================================
+# CONEXÃO GLOBAL (CONNECTION POOLING)
+# ==========================================
+mongo_client = None
 
+if MONGO_URI:
+    try:
+        mongo_client = MongoClient(MONGO_URI)
+    except Exception as e:
+        logger.error(f"Erro ao conectar no MongoDB: {e}")
+
+# ==========================================
+# FUNÇÕES DE BANCO DE DADOS
+# ==========================================
 def get_mongo_collection(collection_name: str):
-    if MONGO_URI is None or MONGO_DB is None:
-        raise ValueError("MONGO_URI and MONGO_DB must be set")
+    """Retorna a coleção específica do banco de dados."""
+    if mongo_client is None:
+        raise ValueError("MONGO_URI não configurado. Banco de dados indisponível.")
     
-    client = MongoClient(MONGO_URI)
-    db = client[MONGO_DB]
+    db = mongo_client[MONGO_DB]
+    
     return db[collection_name]
 
-
-# --- Funções de Log de Previsão ---
-
-def log_prediction(prediction_data) -> dict:
+def log_prediction(prediction_data: PredictionResponse) -> dict:
     """
     Insere um log de predição no banco de dados e retorna o
-    documento inserido com o ID formatado para resposta JSON.
+    documento inserido com o ID formatado para a resposta JSON.
     """
     collection = get_mongo_collection(f"{ENV.upper()}_intent_logs")
-    
-    # Converte o modelo Pydantic para um dicionário antes de inserir
     prediction_dict = prediction_data.model_dump()
 
-    # Log the prediction to the database
     try:
-        # O Pymongo modifica o dicionário `prediction_dict`, adicionando um campo `_id`.
         result = collection.insert_one(prediction_dict)
         
-        # Adicionamos o ID gerado como uma string para a resposta JSON
-        # e removemos o campo `_id` (do tipo ObjectId) que não é serializável.
         prediction_dict["id"] = str(result.inserted_id)
         prediction_dict.pop("_id", None)
-
     except Exception as e:
-        # If insert_one fails, log the error and continue
-        raise Exception(f"Failed to log prediction to database. Error: {e}")
+        logger.error(f"Falha ao salvar log no banco de dados: {e}")
+        raise Exception(f"Falha ao registrar predição no banco. Erro: {e}")
 
     return prediction_dict
-

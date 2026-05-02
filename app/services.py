@@ -28,6 +28,7 @@ def load_all_classifiers(models_to_load_str: str) -> dict:
             logger.error(f"Falha ao carregar o modelo de '{url}': {e}")
 
             raise Exception(f"Falha ao carregar o modelo de '{url}': {e}")
+            
     return loaded_models
 
 def predict_and_log_intent(
