@@ -11,6 +11,7 @@ from app import services
 
 load_dotenv()
 logger = logging.getLogger(__name__)
+
 ENV = os.getenv("ENV", "prod").lower()
 
 class EndpointFilter(logging.Filter):
@@ -25,6 +26,7 @@ logging.getLogger("uvicorn.access").addFilter(EndpointFilter(path="/health"))
 def get_model_urls() -> str:
     models_env = os.getenv("WANDB_MODELS")
     assert models_env is not None, "Variável WANDB_MODELS não definida."
+    
     return models_env
 
 @asynccontextmanager

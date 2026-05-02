@@ -24,6 +24,7 @@ async def fazer_predicao(request: Request, body: PredictRequest, owner: str = De
             owner=owner, 
             models=models
         )
+        
         return JSONResponse(content=results)
     
     except Exception as e:
