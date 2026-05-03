@@ -5,6 +5,7 @@ import numpy as np
 import yaml
 import pandas as pd
 import tensorflow as tf
+
 from sklearn.metrics import classification_report, confusion_matrix
 from dotenv import load_dotenv
 
@@ -124,7 +125,7 @@ def test_init_fails_without_config_or_model(monkeypatch):
     monkeypatch.delenv("WANDB_MODELS", raising=False)
     
     # Deve falhar, pois nem 'config', nem 'load_model', nem WANDB_MODELS foram dados
-    with pytest.raises(ValueError, match="A 'config' must be provided"):
+    with pytest.raises(ValueError, match="A 'config' deve ser informada"):
         IntentClassifier()
 
 def test_preprocess_text_stopwords(clf_with_stopwords):
