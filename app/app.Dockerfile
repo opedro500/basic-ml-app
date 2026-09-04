@@ -1,5 +1,5 @@
 ## Usa a imagem oficial e enxuta do Python 3.11 como base
-FROM python:3.11-slim-bullseye
+FROM python:3.11-slim-bookworm
 
 # Define o diretório de trabalho dentro do container
 WORKDIR /app
