@@ -11,22 +11,30 @@ logger = logging.getLogger(__name__)
 def load_all_classifiers(models_to_load_str: str) -> dict:
     """
     Carrega todos os modelos de ML especificados na variável de ambiente
-    WANDB_MODELS a partir do registro do Weights & Biases.
+    WANDB_MODELS a partir do registro do Weights & Biases ou arquivos locais.
     """
     loaded_models = {}
     model_urls = [url.strip() for url in models_to_load_str.split(',') if url.strip()]
-    logger.info(f"Carregando {len(model_urls)} modelo(s) do W&B...")
+    logger.info(f"Carregando {len(model_urls)} modelo(s)...")
 
     for url in model_urls:
         try:
-            model_name = url.split('/')[-1].split(':')[0]
-
-            logger.info(f"Carregando modelo: '{model_name}' (de {url})")
-            loaded_models[model_name] = IntentClassifier(load_model=url)
+            if url.endswith(".keras"):
+                model_name = url.split('/')[-1].replace('.keras', '')
+                config_path = url.replace(".keras", "_config.yml")
+                
+                logger.info(f"Carregando modelo LOCAL: '{model_name}' (de {url})")
+                loaded_models[model_name] = IntentClassifier(load_model=url, config=config_path)
+            else:
+                model_name = url.split('/')[-1].split(':')[0]
+                
+                logger.info(f"Carregando modelo W&B: '{model_name}' (de {url})")
+                loaded_models[model_name] = IntentClassifier(load_model=url)
+                
             logger.info(f"Modelo '{model_name}' carregado com sucesso.")
         except Exception as e:
             logger.error(f"Falha ao carregar o modelo de '{url}': {e}")
-
+            
             raise Exception(f"Falha ao carregar o modelo de '{url}': {e}")
             
     return loaded_models
@@ -48,10 +56,12 @@ def predict_and_log_intent(
         top_intent, all_probs = model.predict(text)
         predictions[model_name] = SinglePrediction(top_intent=top_intent, all_probs=all_probs)
 
-    log_document = PredictionResponse(text=text, 
-                                      owner=owner, 
-                                      predictions=predictions, 
-                                      timestamp=int(datetime.now(timezone.utc).timestamp()))
+    log_document = PredictionResponse(
+        text=text, 
+        owner=owner, 
+        predictions=predictions, 
+        timestamp=int(datetime.now(timezone.utc).timestamp())
+    )
     
     final_result = log_prediction(log_document)
 
