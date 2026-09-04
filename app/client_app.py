@@ -66,8 +66,8 @@ def main():
     text_input = st.text_area(
         "Digite a mensagem do cliente:", 
         height=100, 
-        placeholder="Ex: Olá, meu pedido está atrasado e eu gostaria de saber onde ele está.",
-        help="Digite o texto completo para obter a melhor precisão."
+        placeholder="Ex: How are you?",
+        help="Digite o texto em inglês completo para obter a melhor precisão."
     )
 
     col_btn, col_info = st.columns([1, 4])
